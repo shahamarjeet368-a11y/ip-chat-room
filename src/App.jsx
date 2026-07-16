@@ -17,7 +17,8 @@ import {
   Trash2,
   CornerUpLeft,
   UserMinus,
-  ShieldAlert
+  ShieldAlert,
+  ArrowLeft
 } from 'lucide-react';
 
 function App() {
@@ -53,6 +54,7 @@ function App() {
 
   // Join Room via link states
   const [roomPasswordInput, setRoomPasswordInput] = useState('');
+  const [roomToVerify, setRoomToVerify] = useState(null);
   const [urlRoomId, setUrlRoomId] = useState('');
   const [urlRoomDetails, setUrlRoomDetails] = useState(null);
 
@@ -345,6 +347,75 @@ function App() {
     );
   }
 
+  // Render password locked prompt screen if we clicked a room in the sidebar that needs a password
+  if (roomToVerify) {
+    const handleVerifyPasswordLocalSubmit = (e) => {
+      e.preventDefault();
+      if (roomToVerify.password !== roomPasswordInput) {
+        setJoinRoomError('Incorrect password. Please try again.');
+      } else {
+        setActiveRoom(roomToVerify);
+        setRoomToVerify(null);
+        setRoomPasswordInput('');
+        setJoinRoomError('');
+      }
+    };
+
+    return (
+      <div className="full-screen-container">
+        <div className="auth-card">
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ margin: '0 auto', background: 'var(--primary-glow)', color: 'var(--primary)', padding: '16px', borderRadius: '50%', width: 'fit-content' }}>
+              <Lock size={32} />
+            </div>
+            <h1 className="auth-title" style={{ fontSize: '24px' }}>Password Protected Chat</h1>
+            <p className="auth-subtitle">
+              Enter the password to access <strong>{roomToVerify.name}</strong>.
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyPasswordLocalSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="auth-form-group">
+              <label htmlFor="local-room-password">Enter Room Password</label>
+              <input
+                id="local-room-password"
+                type="password"
+                value={roomPasswordInput}
+                onChange={(e) => setRoomPasswordInput(e.target.value)}
+                placeholder="Password..."
+                required
+              />
+            </div>
+
+            {joinRoomError && (
+              <div className="error-alert">
+                <AlertTriangle size={16} />
+                <span>{joinRoomError}</span>
+              </div>
+            )}
+
+            <button type="submit" className="primary-btn">
+              <Unlock size={18} /> Access Chat
+            </button>
+            
+            <button 
+              type="button" 
+              className="form-btn cancel" 
+              style={{ padding: '12px' }}
+              onClick={() => {
+                setRoomToVerify(null);
+                setRoomPasswordInput('');
+                setJoinRoomError('');
+              }}
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   // Render password locked prompt screen if we are joining a room via a link (Admin bypasses this screen!)
   const showPasswordScreen = urlRoomId && urlRoomDetails && urlRoomDetails.password && !currentUser.isAdmin;
   if (showPasswordScreen) {
@@ -503,7 +574,13 @@ function App() {
                   key={room.id}
                   type="button"
                   className={`list-item ${activeRoom?.id === room.id ? 'active' : ''}`}
-                  onClick={() => setActiveRoom(room)}
+                  onClick={() => {
+                    if (room.password && !currentUser.isAdmin) {
+                      setRoomToVerify(room);
+                    } else {
+                      setActiveRoom(room);
+                    }
+                  }}
                 >
                   <div className="item-left-content">
                     <MessageSquare size={18} style={{ color: activeRoom?.id === room.id ? 'var(--primary)' : 'var(--text-secondary)' }} />
@@ -588,12 +665,23 @@ function App() {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="chat-area">
+      <main className={`chat-area ${activeRoom ? 'active' : ''}`}>
         {activeRoom ? (
           <>
             {/* Header info */}
             <div className="chat-header">
               <div className="chat-header-info">
+                {/* Mobile Back Button */}
+                <button 
+                  type="button" 
+                  className="mobile-back-btn" 
+                  onClick={() => setActiveRoom(null)}
+                  title="Back to rooms list"
+                  style={{ display: 'none' }}
+                >
+                  <ArrowLeft size={20} />
+                </button>
+
                 <div style={{ background: 'var(--primary-glow)', color: 'var(--primary)', padding: '10px', borderRadius: '10px' }}>
                   <Radio size={20} />
                 </div>
