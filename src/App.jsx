@@ -73,14 +73,16 @@ function App() {
   const [lightboxImg, setLightboxImg] = useState(null);
 
   // Active users restricted to current room (excluding admin)
-  const displayActiveUsers = activeRoom
+  const displayActiveUsers = (activeRoom && currentUser)
     ? users.filter(u => u.id !== currentUser.id && !u.isAdmin && u.isOnline && activeRoom.members.includes(u.id))
     : [];
 
   // Filtered rooms list for regular users (only show rooms they joined)
-  const displayRooms = currentUser.isAdmin
-    ? rooms
-    : rooms.filter(room => room.members.includes(currentUser.id));
+  const displayRooms = currentUser
+    ? (currentUser.isAdmin
+      ? rooms
+      : rooms.filter(room => room.members.includes(currentUser.id)))
+    : [];
 
   // Reset impersonation select when activeRoom changes
   useEffect(() => {
