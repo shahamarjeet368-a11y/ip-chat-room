@@ -262,7 +262,7 @@ function App() {
                 }}
                 className="admin-login-checkbox"
               />
-              <span>Log in as Administrator</span>
+              <span>Welcome User</span>
             </label>
 
             {isAdminLogin ? (

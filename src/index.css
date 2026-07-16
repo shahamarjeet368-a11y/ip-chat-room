@@ -148,7 +148,7 @@ input:focus, textarea:focus {
 .auth-subtitle {
   color: var(--text-secondary);
   text-align: center;
-  margin: -12px 0 0 0;
+  margin: 8px 0 0 0;
   font-size: 14px;
 }
 
@@ -1102,6 +1102,26 @@ input:focus, textarea:focus {
   .auth-card {
     padding: 24px 20px;
     max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .avatar-option-img {
+    width: 44px;
+    height: 44px;
+  }
+  .avatar-selection-grid {
+    gap: 8px;
+  }
+  .auth-card {
+    padding: 20px 16px;
+    gap: 16px;
+  }
+  .auth-title {
+    font-size: 24px;
+  }
+  .auth-subtitle {
+    font-size: 13px;
   }
 }
 
