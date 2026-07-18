@@ -332,11 +332,21 @@ export default function useChatState() {
     return room;
   };
 
-  // Admin moderation: Delete room
+  // Delete room (Admin or Room Creator)
   const deleteRoom = (roomId) => {
-    if (!currentUser?.isAdmin) return;
+    if (!currentUser) return;
 
     const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+    const room = savedRooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    // Only creator or admin can delete room
+    const isCreator = room.creatorId === currentUser.id;
+    if (!currentUser.isAdmin && !isCreator) {
+      alert("You do not have permission to delete this room.");
+      return;
+    }
+
     const filteredRooms = savedRooms.filter(r => r.id !== roomId);
     localStorage.setItem('simple_chat_rooms', JSON.stringify(filteredRooms));
     setRooms(filteredRooms);

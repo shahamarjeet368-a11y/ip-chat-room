@@ -18,7 +18,8 @@ import {
   CornerUpLeft,
   UserMinus,
   ShieldAlert,
-  ArrowLeft
+  ArrowLeft,
+  Search
 } from 'lucide-react';
 
 function App() {
@@ -63,6 +64,7 @@ function App() {
   const [roomPasswordSet, setRoomPasswordSet] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [roomCreationError, setRoomCreationError] = useState('');
+  const [roomSearchQuery, setRoomSearchQuery] = useState('');
 
   // Message inputs
   const [messageText, setMessageText] = useState('');
@@ -80,8 +82,10 @@ function App() {
     ? users.filter(u => u.id !== currentUser.id && !u.isAdmin && u.isOnline && activeRoom.members.includes(u.id))
     : [];
 
-  // Filtered rooms list for all users (everyone can see all rooms, but needs password to enter if protected)
-  const displayRooms = rooms;
+  // Filtered rooms list for all users based on search query
+  const displayRooms = rooms.filter(room =>
+    room.name.toLowerCase().includes(roomSearchQuery.toLowerCase())
+  );
 
   // Reset impersonation select when activeRoom changes
   useEffect(() => {
@@ -565,6 +569,19 @@ function App() {
 
         {/* Chat Rooms Section */}
         <span className="sidebar-section-title">Chat Rooms</span>
+
+        {/* Search Room Input */}
+        <div className="sidebar-search-container" style={{ padding: '4px 16px 12px 16px', position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: '26px', top: '42%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            placeholder="Search rooms..."
+            value={roomSearchQuery}
+            onChange={(e) => setRoomSearchQuery(e.target.value)}
+            style={{ width: '100%', padding: '8px 12px 8px 36px', fontSize: '13px', height: '36px', borderRadius: '8px' }}
+          />
+        </div>
+
         <div className="sidebar-list-container">
           {displayRooms.length === 0 ? (
             <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -604,8 +621,8 @@ function App() {
                     {room.password && <Lock size={12} className="lock-icon" />}
                     {unread > 0 && <span className="unread-badge">{unread}</span>}
                     
-                    {/* Admin Room Deletion Option */}
-                    {currentUser.isAdmin && (
+                    {/* Admin or Room Creator Deletion Option */}
+                    {(currentUser.isAdmin || isRoomCreator) && (
                       <button
                         type="button"
                         className="moderator-action-btn"
@@ -693,15 +710,15 @@ function App() {
                   <ArrowLeft size={20} />
                 </button>
 
-                <div style={{ background: 'var(--primary-glow)', color: 'var(--primary)', padding: '10px', borderRadius: '10px' }}>
+                <div style={{ background: 'var(--primary-glow)', color: 'var(--primary)', padding: '10px', borderRadius: '10px', flexShrink: 0 }}>
                   <Radio size={20} />
                 </div>
-                <div>
-                  <h2 className="chat-header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {activeRoom.name}
-                    {activeRoom.password && <Lock size={16} className="lock-icon" style={{ strokeWidth: '2.5px' }} />}
+                <div className="chat-header-title-wrapper" style={{ minWidth: 0, flex: 1 }}>
+                  <h2 className="chat-header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeRoom.name}</span>
+                    {activeRoom.password && <Lock size={16} className="lock-icon" style={{ strokeWidth: '2.5px', flexShrink: 0 }} />}
                   </h2>
-                  <p className="chat-header-subtitle">
+                  <p className="chat-header-subtitle" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0 0 0' }}>
                     Created by {activeRoom.createdBy} • {activeRoom.members.length} members joined
                   </p>
                 </div>
