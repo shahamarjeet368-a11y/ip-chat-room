@@ -46,6 +46,7 @@ body {
   color: var(--text-primary);
   overflow: hidden;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   -webkit-font-smoothing: antialiased;
 }
@@ -224,6 +225,7 @@ input:focus, textarea:focus {
 .dashboard-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   background-color: var(--bg-app);
 }
@@ -520,6 +522,8 @@ input:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .chat-header-title {
@@ -724,6 +728,14 @@ input:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.chat-input-form input,
+.chat-input-form select,
+.chat-input-form button {
+  margin: 0;
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .input-icon-btn {
