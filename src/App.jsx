@@ -593,9 +593,8 @@ function App() {
               const isRoomCreator = room.creatorId === currentUser.id;
               
               return (
-                <button
+                <div
                   key={room.id}
-                  type="button"
                   className={`list-item ${activeRoom?.id === room.id ? 'active' : ''}`}
                   onClick={() => {
                     if (room.password && !currentUser.isAdmin) {
@@ -609,6 +608,8 @@ function App() {
                       }
                     }
                   }}
+                  role="button"
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
                 >
                   <div className="item-left-content">
                     <MessageSquare size={18} style={{ color: activeRoom?.id === room.id ? 'var(--primary)' : 'var(--text-secondary)' }} />
@@ -637,7 +638,7 @@ function App() {
                       </button>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })
           )}
