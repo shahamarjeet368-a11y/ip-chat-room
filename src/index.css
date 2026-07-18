@@ -1065,6 +1065,18 @@ input:focus, textarea:focus {
     background: var(--border-color);
   }
 
+  .invite-btn-text {
+    display: none;
+  }
+
+  .header-action-btn {
+    padding: 8px;
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    border-radius: 8px;
+  }
+
   .chat-header {
     padding: 12px 16px;
   }

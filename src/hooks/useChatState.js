@@ -168,27 +168,43 @@ export default function useChatState() {
       throw new Error("Username 'Admin' is reserved. Please use the Admin Login option instead.");
     }
 
-    const userId = 'user_' + Math.random().toString(36).substr(2, 9);
-    const newUser = {
-      id: userId,
-      username,
-      avatar,
-      isOnline: true,
-      createdAt: Date.now(),
-      isAdmin: false
-    };
-
+    const trimmedUsername = username.trim();
     const savedUsers = JSON.parse(localStorage.getItem('simple_chat_users') || '[]');
-    savedUsers.push(newUser);
-    localStorage.setItem('simple_chat_users', JSON.stringify(savedUsers));
+    const existingUser = savedUsers.find(u => u.username.toLowerCase() === trimmedUsername.toLowerCase());
+
+    let userToUse;
+    if (existingUser) {
+      // Log in as existing user
+      existingUser.isOnline = true;
+      existingUser.avatar = avatar; // Update avatar if they chose a new one
+      userToUse = existingUser;
+      
+      const updatedUsers = savedUsers.map(u => u.id === existingUser.id ? existingUser : u);
+      localStorage.setItem('simple_chat_users', JSON.stringify(updatedUsers));
+      setUsers(updatedUsers);
+    } else {
+      // Register new user
+      const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+      const newUser = {
+        id: userId,
+        username: trimmedUsername,
+        avatar,
+        isOnline: true,
+        createdAt: Date.now(),
+        isAdmin: false
+      };
+      savedUsers.push(newUser);
+      localStorage.setItem('simple_chat_users', JSON.stringify(savedUsers));
+      userToUse = newUser;
+      setUsers(savedUsers);
+    }
     
-    sessionStorage.setItem('simple_chat_current_user_id', userId);
-    setUsers(savedUsers);
-    setCurrentUser(newUser);
+    sessionStorage.setItem('simple_chat_current_user_id', userToUse.id);
+    setCurrentUser(userToUse);
 
     // Notify other tabs
-    channelRef.current?.postMessage({ type: 'USER_UPDATED', payload: newUser });
-    return newUser;
+    channelRef.current?.postMessage({ type: 'USER_UPDATED', payload: userToUse });
+    return userToUse;
   };
 
   // Login as Admin
@@ -252,17 +268,25 @@ export default function useChatState() {
   const createRoom = (roomName, password) => {
     if (!currentUser) return null;
 
+    const trimmedName = roomName.trim();
+    const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+    
+    // Check if room with same name exists (case-insensitive)
+    const roomExists = savedRooms.some(r => r.name.toLowerCase() === trimmedName.toLowerCase());
+    if (roomExists) {
+      throw new Error(`A room with the name "${trimmedName}" already exists. Please choose a different name.`);
+    }
+
     const roomId = 'room_' + Math.random().toString(36).substr(2, 9);
     const newRoom = {
       id: roomId,
-      name: roomName,
+      name: trimmedName,
       password: password || '', // optional or empty means no password
       creatorId: currentUser.id,
       createdBy: currentUser.username,
       members: [currentUser.id]
     };
 
-    const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
     savedRooms.push(newRoom);
     localStorage.setItem('simple_chat_rooms', JSON.stringify(savedRooms));
 

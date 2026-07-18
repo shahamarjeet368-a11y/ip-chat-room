@@ -62,6 +62,7 @@ function App() {
   const [roomNameInput, setRoomNameInput] = useState('');
   const [roomPasswordSet, setRoomPasswordSet] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [roomCreationError, setRoomCreationError] = useState('');
 
   // Message inputs
   const [messageText, setMessageText] = useState('');
@@ -79,12 +80,8 @@ function App() {
     ? users.filter(u => u.id !== currentUser.id && !u.isAdmin && u.isOnline && activeRoom.members.includes(u.id))
     : [];
 
-  // Filtered rooms list for regular users (only show rooms they joined)
-  const displayRooms = currentUser
-    ? (currentUser.isAdmin
-      ? rooms
-      : rooms.filter(room => room.members.includes(currentUser.id)))
-    : [];
+  // Filtered rooms list for all users (everyone can see all rooms, but needs password to enter if protected)
+  const displayRooms = rooms;
 
   // Reset impersonation select when activeRoom changes
   useEffect(() => {
@@ -172,11 +169,16 @@ function App() {
   const handleCreateRoomSubmit = (e) => {
     e.preventDefault();
     if (!roomNameInput.trim()) return;
+    setRoomCreationError('');
 
-    createRoom(roomNameInput.trim(), roomPasswordSet.trim());
-    setRoomNameInput('');
-    setRoomPasswordSet('');
-    setShowCreateForm(false);
+    try {
+      createRoom(roomNameInput.trim(), roomPasswordSet.trim());
+      setRoomNameInput('');
+      setRoomPasswordSet('');
+      setShowCreateForm(false);
+    } catch (err) {
+      setRoomCreationError(err.message);
+    }
   };
 
   // Copy share link to clipboard
@@ -347,14 +349,11 @@ function App() {
     );
   }
 
-  // Render password locked prompt screen if we clicked a room in the sidebar that needs a password
   if (roomToVerify) {
     const handleVerifyPasswordLocalSubmit = (e) => {
       e.preventDefault();
-      if (roomToVerify.password !== roomPasswordInput) {
-        setJoinRoomError('Incorrect password. Please try again.');
-      } else {
-        setActiveRoom(roomToVerify);
+      const joined = joinRoomWithPassword(roomToVerify.id, roomPasswordInput, currentUser);
+      if (joined) {
         setRoomToVerify(null);
         setRoomPasswordInput('');
         setJoinRoomError('');
@@ -537,6 +536,12 @@ function App() {
                   required
                 />
               </div>
+              {roomCreationError && (
+                <div className="error-alert" style={{ marginTop: '8px', padding: '8px 10px', fontSize: '11px' }}>
+                  <AlertTriangle size={14} />
+                  <span>{roomCreationError}</span>
+                </div>
+              )}
               <div className="room-creation-form-actions">
                 <button 
                   type="button" 
@@ -545,6 +550,7 @@ function App() {
                     setShowCreateForm(false);
                     setRoomNameInput('');
                     setRoomPasswordSet('');
+                    setRoomCreationError('');
                   }}
                 >
                   Cancel
@@ -578,7 +584,12 @@ function App() {
                     if (room.password && !currentUser.isAdmin) {
                       setRoomToVerify(room);
                     } else {
-                      setActiveRoom(room);
+                      // Join the room if not already a member
+                      if (currentUser && !room.members.includes(currentUser.id)) {
+                        joinRoomWithPassword(room.id, '', currentUser);
+                      } else {
+                        setActiveRoom(room);
+                      }
                     }
                   }}
                 >
@@ -699,7 +710,7 @@ function App() {
               <div className="chat-header-actions">
                 {isCopied && <span className="copied-tooltip">Link copied!</span>}
                 <button type="button" className="header-action-btn" onClick={handleCopyLink}>
-                  <Copy size={14} /> Invite Link
+                  <Copy size={14} /> <span className="invite-btn-text">Invite Link</span>
                 </button>
               </div>
             </div>
