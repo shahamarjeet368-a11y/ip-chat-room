@@ -278,20 +278,28 @@ function App() {
           
           <form onSubmit={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             
-            {/* Admin toggle checkbox */}
-            <label className="admin-login-checkbox-label">
-              <input
-                type="checkbox"
-                checked={isAdminLogin}
-                onChange={(e) => {
-                  setIsAdminLogin(e.target.checked);
-                  setRegisterError('');
-                  setJoinRoomError('');
-                }}
-                className="admin-login-checkbox"
-              />
-              <span>Welcome User</span>
-            </label>
+             {/* Admin toggle link */}
+             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+               <a
+                 href="#"
+                 onClick={(e) => {
+                   e.preventDefault();
+                   setIsAdminLogin(!isAdminLogin);
+                   setRegisterError('');
+                   setJoinRoomError('');
+                 }}
+                 className="admin-toggle-link"
+                 style={{
+                   color: '#ffffff',
+                   textDecoration: 'underline',
+                   cursor: 'pointer',
+                   fontSize: '14px',
+                   fontWeight: '500'
+                 }}
+               >
+                 Welcome
+               </a>
+             </div>
 
             {isAdminLogin ? (
               // Admin login password and security inputs
