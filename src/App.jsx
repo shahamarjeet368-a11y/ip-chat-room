@@ -40,7 +40,11 @@ function App() {
     kickUser,
     sendMessage,
     getUnreadCount,
-    setActiveRoom
+    setActiveRoom,
+    urlRoomId,
+    urlRoomDetails,
+    setUrlRoomId,
+    setUrlRoomDetails
   } = useChatState();
 
   // Username and Avatar selection inputs
@@ -56,8 +60,6 @@ function App() {
   // Join Room via link states
   const [roomPasswordInput, setRoomPasswordInput] = useState('');
   const [roomToVerify, setRoomToVerify] = useState(null);
-  const [urlRoomId, setUrlRoomId] = useState('');
-  const [urlRoomDetails, setUrlRoomDetails] = useState(null);
 
   // New room inputs
   const [roomNameInput, setRoomNameInput] = useState('');
@@ -97,20 +99,18 @@ function App() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Check URL query parameters for connection link: e.g. ?room=room_123
+  // Handle auto-joining of room from invite link if user is already logged in
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomId = params.get('room');
-    if (roomId) {
-      setUrlRoomId(roomId);
-      // Fetch details of this room from localStorage to see if it exists
-      const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
-      const room = savedRooms.find(r => r.id === roomId);
-      if (room) {
-        setUrlRoomDetails(room);
+    if (currentUser && urlRoomId && urlRoomDetails) {
+      const isAlreadyMember = urlRoomDetails.members.includes(currentUser.id);
+      if (isAlreadyMember || !urlRoomDetails.password) {
+        joinRoomWithPassword(urlRoomId, '', currentUser);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setUrlRoomId('');
+        setUrlRoomDetails(null);
       }
     }
-  }, []);
+  }, [currentUser, urlRoomId, urlRoomDetails, joinRoomWithPassword, setUrlRoomId, setUrlRoomDetails]);
 
   // Auto-scroll messages to bottom when new messages arrive
   useEffect(() => {
@@ -188,11 +188,33 @@ function App() {
   // Copy share link to clipboard
   const handleCopyLink = () => {
     if (!activeRoom) return;
-    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoom.id}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    });
+    try {
+      const roomData = {
+        id: activeRoom.id,
+        name: activeRoom.name,
+        password: activeRoom.password || '',
+        createdBy: activeRoom.createdBy,
+        creatorId: activeRoom.creatorId,
+        members: activeRoom.members
+      };
+      
+      const jsonStr = JSON.stringify(roomData);
+      const uint8 = new TextEncoder().encode(jsonStr);
+      let binString = "";
+      for (let i = 0; i < uint8.length; i++) {
+        binString += String.fromCharCode(uint8[i]);
+      }
+      const encodedData = btoa(binString);
+      const shareUrl = `${window.location.origin}${window.location.pathname}?join=${encodedData}`;
+      console.log('Generated Invite Link:', shareUrl);
+
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      });
+    } catch (err) {
+      console.error('Error generating invite link:', err);
+    }
   };
 
   // Handle Image attachment file picker changes

@@ -17,6 +17,8 @@ export default function useChatState() {
   const [messages, setMessages] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
   const [joinRoomError, setJoinRoomError] = useState('');
+  const [urlRoomId, setUrlRoomId] = useState('');
+  const [urlRoomDetails, setUrlRoomDetails] = useState(null);
   
   // Track read status: { [userId_roomId]: lastReadTimestamp }
   const [readStatuses, setReadStatuses] = useState({});
@@ -25,6 +27,9 @@ export default function useChatState() {
 
   // Load initial data from localStorage
   useEffect(() => {
+    // Initialize BroadcastChannel early for real-time inter-tab messaging
+    channelRef.current = new BroadcastChannel('simple_chat_channel');
+
     // Helper to initialize local storage lists
     if (!localStorage.getItem('simple_chat_users')) {
       localStorage.setItem('simple_chat_users', JSON.stringify([]));
@@ -39,13 +44,70 @@ export default function useChatState() {
       localStorage.setItem('simple_chat_read_status', JSON.stringify({}));
     }
 
-    const savedUsers = JSON.parse(localStorage.getItem('simple_chat_users') || '[]');
-    const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+    let savedUsers = JSON.parse(localStorage.getItem('simple_chat_users') || '[]');
+    let savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
     const savedReadStatuses = JSON.parse(localStorage.getItem('simple_chat_read_status') || '{}');
+
+    // Parse URL query parameters for connection link: ?join=base64Data or ?room=roomId
+    const params = new URLSearchParams(window.location.search);
+    const joinData = params.get('join');
+    const roomIdParam = params.get('room');
+
+    let roomId = roomIdParam || '';
+    let roomDetails = null;
+
+    if (joinData) {
+      try {
+        const binString = atob(joinData);
+        const uint8 = new Uint8Array(binString.length);
+        for (let i = 0; i < binString.length; i++) {
+          uint8[i] = binString.charCodeAt(i);
+        }
+        const decodedString = new TextDecoder().decode(uint8);
+        const importedRoom = JSON.parse(decodedString);
+        
+        if (importedRoom && importedRoom.id && importedRoom.name) {
+          roomId = importedRoom.id;
+          roomDetails = importedRoom;
+
+          // Save this imported room to local storage if it doesn't exist
+          const existingRoomIndex = savedRooms.findIndex(r => r.id === roomId);
+          if (existingRoomIndex === -1) {
+            savedRooms.push(importedRoom);
+            localStorage.setItem('simple_chat_rooms', JSON.stringify(savedRooms));
+            // Send BroadcastChannel notification to other tabs
+            channelRef.current?.postMessage({ type: 'ROOM_CREATED', payload: importedRoom });
+          } else {
+            // Update details (e.g. password, creator name) but keep members merged
+            const existingRoom = savedRooms[existingRoomIndex];
+            const mergedMembers = Array.from(new Set([...existingRoom.members, ...importedRoom.members]));
+            savedRooms[existingRoomIndex] = {
+              ...existingRoom,
+              name: importedRoom.name,
+              password: importedRoom.password,
+              createdBy: importedRoom.createdBy,
+              creatorId: importedRoom.creatorId,
+              members: mergedMembers
+            };
+            localStorage.setItem('simple_chat_rooms', JSON.stringify(savedRooms));
+            roomDetails = savedRooms[existingRoomIndex];
+          }
+        }
+      } catch (err) {
+        console.error('Error parsing join room link:', err);
+      }
+    } else if (roomId) {
+      roomDetails = savedRooms.find(r => r.id === roomId);
+    }
     
     setUsers(savedUsers);
     setRooms(savedRooms);
     setReadStatuses(savedReadStatuses);
+
+    if (roomId && roomDetails) {
+      setUrlRoomId(roomId);
+      setUrlRoomDetails(roomDetails);
+    }
 
     // Identify current user for this specific browser tab using sessionStorage
     const sessionUserId = sessionStorage.getItem('simple_chat_current_user_id');
@@ -60,9 +122,6 @@ export default function useChatState() {
         setCurrentUser(user);
       }
     }
-
-    // Initialize BroadcastChannel for real-time inter-tab messaging
-    channelRef.current = new BroadcastChannel('simple_chat_channel');
 
     // Listener for messages from other tabs
     channelRef.current.onmessage = (event) => {
@@ -480,6 +539,10 @@ export default function useChatState() {
     kickUser,
     sendMessage,
     getUnreadCount,
-    setActiveRoom
+    setActiveRoom,
+    urlRoomId,
+    urlRoomDetails,
+    setUrlRoomId,
+    setUrlRoomDetails
   };
 }
