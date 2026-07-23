@@ -44,7 +44,8 @@ function App() {
     urlRoomId,
     urlRoomDetails,
     setUrlRoomId,
-    setUrlRoomDetails
+    setUrlRoomDetails,
+    setJoinRoomError
   } = useChatState();
 
   // Username and Avatar selection inputs
@@ -627,11 +628,12 @@ function App() {
                   key={room.id}
                   className={`list-item ${activeRoom?.id === room.id ? 'active' : ''}`}
                   onClick={() => {
-                    if (room.password && !currentUser.isAdmin) {
+                    const isMember = room.members && room.members.includes(currentUser.id);
+                    if (room.password && !currentUser.isAdmin && !isMember) {
                       setRoomToVerify(room);
                     } else {
                       // Join the room if not already a member
-                      if (currentUser && !room.members.includes(currentUser.id)) {
+                      if (currentUser && !isMember) {
                         joinRoomWithPassword(room.id, '', currentUser);
                       } else {
                         setActiveRoom(room);

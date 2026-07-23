@@ -10,6 +10,40 @@ export const AVATARS = [
   'https://api.dicebear.com/7.x/adventurer/svg?seed=Coco',
 ];
 
+// Helper to upload a base64 image file to ntfy.sh as an attachment using PUT
+const uploadBase64ToNtfy = async (base64Data, topic) => {
+  try {
+    const parts = base64Data.split(';base64,');
+    if (parts.length < 2) return null;
+    const contentType = parts[0].split(':')[1];
+    const raw = window.atob(parts[1]);
+    const rawLength = raw.length;
+    const uInt8Array = new Uint8Array(rawLength);
+    for (let i = 0; i < rawLength; ++i) {
+      uInt8Array[i] = raw.charCodeAt(i);
+    }
+    const blob = new Blob([uInt8Array], { type: contentType });
+    const fileExtension = contentType.split('/')[1] || 'png';
+    const filename = `image_${Date.now()}.${fileExtension}`;
+
+    const response = await fetch(`https://ntfy.sh/${topic}`, {
+      method: 'PUT',
+      body: blob,
+      headers: {
+        'Filename': filename,
+        'Content-Type': contentType
+      }
+    });
+
+    if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
+    const responseData = await response.json();
+    return responseData.attachment?.url;
+  } catch (err) {
+    console.error('Error uploading image to ntfy:', err);
+    return null;
+  }
+};
+
 export default function useChatState() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
@@ -221,6 +255,245 @@ export default function useChatState() {
     }
   }, [activeRoom, currentUser?.id]);
 
+  // Helper to publish events to a public keyless pub-sub topic on ntfy.sh
+  const publishToNtfy = (roomId, type, payload) => {
+    fetch(`https://ntfy.sh/ntfy_vibe_chat_room_${roomId}`, {
+      method: 'POST',
+      body: JSON.stringify({ type, payload })
+    }).catch(err => console.error('Error publishing to ntfy:', err));
+  };
+
+  // Helper to publish events to the global rooms topic on ntfy.sh
+  const publishToNtfyGlobal = (type, payload) => {
+    fetch(`https://ntfy.sh/ntfy_vibe_chat_global_rooms`, {
+      method: 'POST',
+      body: JSON.stringify({ type, payload })
+    }).catch(err => console.error('Error publishing to global ntfy:', err));
+  };
+
+  // Real-time synchronization of the global rooms list
+  useEffect(() => {
+    const syncGlobalRoomsHistory = async () => {
+      try {
+        const response = await fetch('https://ntfy.sh/ntfy_vibe_chat_global_rooms/json?poll=1&since=all');
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        const text = await response.text();
+        if (!text) return;
+        
+        const lines = text.trim().split('\n');
+        const savedRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+        let updated = [...savedRooms];
+        let changed = false;
+
+        lines.forEach(line => {
+          try {
+            const ntfyData = JSON.parse(line);
+            if (ntfyData.event === 'message') {
+              const data = JSON.parse(ntfyData.message);
+              if (data.type === 'ROOM_CREATED') {
+                const room = data.payload;
+                const existsIdx = updated.findIndex(r => r.id === room.id);
+                if (existsIdx === -1) {
+                  updated.push(room);
+                  changed = true;
+                } else {
+                  const mergedMembers = Array.from(new Set([...updated[existsIdx].members, ...room.members]));
+                  updated[existsIdx] = {
+                    ...updated[existsIdx],
+                    ...room,
+                    members: mergedMembers
+                  };
+                  changed = true;
+                }
+              } else if (data.type === 'ROOM_DELETED') {
+                const { roomId } = data.payload;
+                const existsIdx = updated.findIndex(r => r.id === roomId);
+                if (existsIdx !== -1) {
+                  updated = updated.filter(r => r.id !== roomId);
+                  changed = true;
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore JSON parsing errors
+          }
+        });
+
+        if (changed) {
+          localStorage.setItem('simple_chat_rooms', JSON.stringify(updated));
+          setRooms(updated);
+        }
+      } catch (err) {
+        console.error('Error syncing global rooms history:', err);
+      }
+    };
+
+    syncGlobalRoomsHistory();
+
+    const eventSource = new EventSource('https://ntfy.sh/ntfy_vibe_chat_global_rooms/sse');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const ntfyData = JSON.parse(event.data);
+        if (ntfyData.event === 'message') {
+          const data = JSON.parse(ntfyData.message);
+          const { type, payload } = data;
+
+          if (type === 'ROOM_CREATED') {
+            const freshRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+            const existsIdx = freshRooms.findIndex(r => r.id === payload.id);
+            if (existsIdx === -1) {
+              freshRooms.push(payload);
+              localStorage.setItem('simple_chat_rooms', JSON.stringify(freshRooms));
+              setRooms(freshRooms);
+            } else {
+              const mergedMembers = Array.from(new Set([...freshRooms[existsIdx].members, ...payload.members]));
+              freshRooms[existsIdx] = {
+                ...freshRooms[existsIdx],
+                ...payload,
+                members: mergedMembers
+              };
+              localStorage.setItem('simple_chat_rooms', JSON.stringify(freshRooms));
+              setRooms(freshRooms);
+            }
+          } else if (type === 'ROOM_DELETED') {
+            const freshRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+            const filtered = freshRooms.filter(r => r.id !== payload.roomId);
+            localStorage.setItem('simple_chat_rooms', JSON.stringify(filtered));
+            setRooms(filtered);
+            if (activeRoom && activeRoom.id === payload.roomId) {
+              setActiveRoom(null);
+              alert('This chat room has been deleted.');
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error handling global SSE event:', e);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('Global EventSource error:', err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [activeRoom?.id]);
+
+  // Real-time synchronization via public ntfy EventSource (SSE)
+
+  useEffect(() => {
+    if (!activeRoom) return;
+
+    const topic = `ntfy_vibe_chat_room_${activeRoom.id}`;
+    let eventSource;
+
+    const connect = () => {
+      eventSource = new EventSource(`https://ntfy.sh/${topic}/sse`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const ntfyData = JSON.parse(event.data);
+          if (ntfyData.event === 'message') {
+            const data = JSON.parse(ntfyData.message);
+            const { type, payload } = data;
+
+            if (type === 'NEW_MESSAGE') {
+              const freshMessages = JSON.parse(localStorage.getItem('simple_chat_messages') || '[]');
+              const messageExists = freshMessages.some(m => m.id === payload.id);
+              if (!messageExists) {
+                freshMessages.push(payload);
+                localStorage.setItem('simple_chat_messages', JSON.stringify(freshMessages));
+                
+                // Only update messages state if it belongs to the active room
+                setMessages(prev => {
+                  if (prev.some(m => m.id === payload.id)) return prev;
+                  return [...prev, payload];
+                });
+                
+                if (currentUser) {
+                  // Mark as read
+                  const key = `${currentUser.id}_${activeRoom.id}`;
+                  const freshReadStatuses = JSON.parse(localStorage.getItem('simple_chat_read_status') || '{}');
+                  freshReadStatuses[key] = Date.now();
+                  localStorage.setItem('simple_chat_read_status', JSON.stringify(freshReadStatuses));
+                  setReadStatuses(freshReadStatuses);
+                }
+              }
+            } else if (type === 'MESSAGE_DELETED') {
+              const freshMessages = JSON.parse(localStorage.getItem('simple_chat_messages') || '[]');
+              const filtered = freshMessages.filter(m => m.id !== payload.messageId);
+              localStorage.setItem('simple_chat_messages', JSON.stringify(filtered));
+              setMessages(prev => prev.filter(m => m.id !== payload.messageId));
+            } else if (type === 'USER_KICKED') {
+              if (currentUser && currentUser.id === payload.userId) {
+                setActiveRoom(null);
+                alert('You have been removed from this chat room by an administrator.');
+              } else {
+                const freshRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+                const matchedIndex = freshRooms.findIndex(r => r.id === activeRoom.id);
+                if (matchedIndex !== -1) {
+                  const room = freshRooms[matchedIndex];
+                  room.members = room.members.filter(id => id !== payload.userId);
+                  localStorage.setItem('simple_chat_rooms', JSON.stringify(freshRooms));
+                  setRooms(freshRooms);
+                  setActiveRoom({ ...room });
+                }
+              }
+            } else if (type === 'ROOM_DELETED') {
+              const freshRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+              const filtered = freshRooms.filter(r => r.id !== payload.roomId);
+              localStorage.setItem('simple_chat_rooms', JSON.stringify(filtered));
+              setRooms(filtered);
+              setActiveRoom(null);
+              alert('This chat room has been deleted by an administrator.');
+            } else if (type === 'USER_JOINED') {
+              const freshRooms = JSON.parse(localStorage.getItem('simple_chat_rooms') || '[]');
+              const matchedIndex = freshRooms.findIndex(r => r.id === payload.roomId);
+              if (matchedIndex !== -1) {
+                const room = freshRooms[matchedIndex];
+                if (!room.members.includes(payload.userId)) {
+                  room.members.push(payload.userId);
+                  localStorage.setItem('simple_chat_rooms', JSON.stringify(freshRooms));
+                  setRooms(freshRooms);
+                  if (activeRoom && activeRoom.id === payload.roomId) {
+                    setActiveRoom({ ...room });
+                  }
+                }
+              }
+
+              // Save guest profile so it displays their name and avatar
+              if (payload.userObject) {
+                const freshUsers = JSON.parse(localStorage.getItem('simple_chat_users') || '[]');
+                const userExists = freshUsers.some(u => u.id === payload.userObject.id);
+                if (!userExists) {
+                  freshUsers.push(payload.userObject);
+                  localStorage.setItem('simple_chat_users', JSON.stringify(freshUsers));
+                  setUsers(freshUsers);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error handling SSE message:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('EventSource error:', err);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [activeRoom?.id, currentUser?.id]);
+
   // Register new user
   const registerUser = (username, avatar) => {
     if (username.toLowerCase().trim() === 'admin') {
@@ -354,6 +627,10 @@ export default function useChatState() {
 
     // Notify other tabs
     channelRef.current?.postMessage({ type: 'ROOM_CREATED', payload: newRoom });
+
+    // Publish to global room list
+    publishToNtfyGlobal('ROOM_CREATED', newRoom);
+
     return newRoom;
   };
 
@@ -385,6 +662,9 @@ export default function useChatState() {
 
       // Notify other tabs that user joined
       channelRef.current?.postMessage({ type: 'USER_JOINED', payload: { roomId, userId: userObject.id } });
+
+      // Notify other devices in real-time
+      publishToNtfy(roomId, 'USER_JOINED', { roomId, userId: userObject.id, userObject });
     }
 
     setActiveRoom(room);
@@ -421,6 +701,12 @@ export default function useChatState() {
 
     // Notify other tabs
     channelRef.current?.postMessage({ type: 'ROOM_DELETED', payload: { roomId } });
+
+    // Notify other devices
+    publishToNtfy(roomId, 'ROOM_DELETED', { roomId });
+
+    // Notify global rooms topic
+    publishToNtfyGlobal('ROOM_DELETED', { roomId });
   };
 
   // Admin moderation: Delete individual message
@@ -440,6 +726,9 @@ export default function useChatState() {
 
     // Notify other tabs
     channelRef.current?.postMessage({ type: 'MESSAGE_DELETED', payload: { messageId, roomId: targetMsg.roomId } });
+
+    // Notify other devices
+    publishToNtfy(targetMsg.roomId, 'MESSAGE_DELETED', { messageId });
   };
 
   // Admin moderation: Remove/Kick user from room
@@ -461,22 +750,27 @@ export default function useChatState() {
 
     // Notify other tabs
     channelRef.current?.postMessage({ type: 'USER_KICKED', payload: { userId, roomId } });
+
+    // Notify other devices
+    publishToNtfy(roomId, 'USER_KICKED', { userId });
   };
 
   // Send message (text, base64 image, and optional reply metadata)
-  const sendMessage = (text, image = null, replyTo = null, senderOverride = null) => {
+  const sendMessage = async (text, image = null, replyTo = null, senderOverride = null) => {
     if (!currentUser || !activeRoom) return;
 
     const sender = senderOverride || currentUser;
+    let imageUrl = image;
 
+    const newMessageId = 'msg_' + Math.random().toString(36).substr(2, 9);
     const newMessage = {
-      id: 'msg_' + Math.random().toString(36).substr(2, 9),
+      id: newMessageId,
       roomId: activeRoom.id,
       senderId: sender.id,
       senderName: sender.username,
       senderAvatar: sender.avatar,
       text,
-      image, // Base64 data URL
+      image: imageUrl, // Initially local Base64 URL
       replyTo, // null or { id, senderName, text }
       timestamp: Date.now()
     };
@@ -492,6 +786,25 @@ export default function useChatState() {
 
     // Notify other tabs (if they are online, they'll receive this)
     channelRef.current?.postMessage({ type: 'MESSAGE_SENT', payload: newMessage });
+
+    // Upload to ntfy.sh if there is a base64 image
+    if (image && image.startsWith('data:')) {
+      try {
+        const uploadedUrl = await uploadBase64ToNtfy(image, `ntfy_vibe_chat_room_${activeRoom.id}_files`);
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        }
+      } catch (err) {
+        console.error('Failed to upload image to ntfy:', err);
+      }
+    }
+
+    // Publish to other devices with the remote URL reference
+    const ntfyMessage = {
+      ...newMessage,
+      image: imageUrl
+    };
+    publishToNtfy(activeRoom.id, 'NEW_MESSAGE', ntfyMessage);
   };
 
   // Helper to mark a room as read for a user
@@ -543,6 +856,7 @@ export default function useChatState() {
     urlRoomId,
     urlRoomDetails,
     setUrlRoomId,
-    setUrlRoomDetails
+    setUrlRoomDetails,
+    setJoinRoomError
   };
 }
